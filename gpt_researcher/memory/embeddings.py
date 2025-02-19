@@ -1,9 +1,19 @@
 import os
+import logging
 from typing import Any
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 OPENAI_EMBEDDING_MODEL = os.environ.get(
     "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
 )
+
+AZURE_OPENAI_EMBEDDING_MODEL = os.environ.get(
+    "AZURE_OPENAI_EMBEDDING_MODEL", "text-embedding-3-large"
+)
+
+#!!!For customization: Provider name must be the same as the deployment name!!!
 
 _SUPPORTED_PROVIDERS = {
     "openai",
@@ -21,12 +31,20 @@ _SUPPORTED_PROVIDERS = {
     "dashscope",
     "custom",
     "bedrock",
+    #add new deployment
+    "m8quest",
+    "text-embedding-3-small",
+    "text-embedding-3-large",
 }
 
 
 class Memory:
     def __init__(self, embedding_provider: str, model: str, **embdding_kwargs: Any):
         _embeddings = None
+
+        # Log the value of the model variable
+        #logging.info(f'The value of model is: {model}')
+
         match embedding_provider:
             case "custom":
                 from langchain_openai import OpenAIEmbeddings
@@ -51,9 +69,10 @@ class Memory:
                     model=model,
                     azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
                     openai_api_key=os.environ["AZURE_OPENAI_API_KEY"],
-                    openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
+                    openai_api_version=os.environ["AZURE_OPENAI_EMBEDDING_API_VERSION"],
                     **embdding_kwargs,
                 )
+
             case "cohere":
                 from langchain_cohere import CohereEmbeddings
 
@@ -112,6 +131,41 @@ class Memory:
                 from langchain_aws.embeddings import BedrockEmbeddings
 
                 _embeddings = BedrockEmbeddings(model_id=model, **embdding_kwargs)
+
+            #add new deployment
+            case "m8quest": # REPLACE deployment_name with the deployment name for your embedding model
+                from langchain_openai import AzureOpenAIEmbeddings
+
+                _embeddings = AzureOpenAIEmbeddings(
+                    model=os.environ["AZURE_OPENAI_EMBEDDING_MODEL"],
+                    #embeddging_deployment_name=os.environ["EMBEDDING_DEPLOYMENT_NAME"],
+                    embeddging_deployment_name=model,
+                    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+                    openai_api_key=os.environ["AZURE_OPENAI_API_KEY"],
+                    openai_api_version=os.environ["AZURE_OPENAI_EMBEDDING_API_VERSION"],
+                    **embdding_kwargs,
+                )
+            
+            case "text-embedding-3-small": # REPLACE deployment_name with the deployment name for your embedding model
+                from langchain_openai import AzureOpenAIEmbeddings
+                _embeddings = AzureOpenAIEmbeddings(
+                    model=model,
+                    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+                    openai_api_key=os.environ["AZURE_OPENAI_API_KEY"],
+                    openai_api_version=os.environ["AZURE_OPENAI_EMBEDDING_API_VERSION"],
+                    **embdding_kwargs,
+                )
+            
+            case "text-embedding-3-large": # REPLACE deployment_name with the deployment name for your embedding model
+                from langchain_openai import AzureOpenAIEmbeddings
+                _embeddings = AzureOpenAIEmbeddings(
+                    model=model,
+                    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+                    openai_api_key=os.environ["AZURE_OPENAI_API_KEY"],
+                    openai_api_version=os.environ["AZURE_OPENAI_EMBEDDING_API_VERSION"],
+                    **embdding_kwargs,
+                )
+
             case _:
                 raise Exception("Embedding not found.")
 
