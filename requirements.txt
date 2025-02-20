@@ -34,6 +34,7 @@ loguru
 PyJWT
 passlib
 
+azure-storage-blob
 # uncomment for testing
 # pytest
 # pytest-asyncio
