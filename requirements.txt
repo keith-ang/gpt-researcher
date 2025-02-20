@@ -6,6 +6,7 @@ python-dotenv
 pyyaml
 uvicorn
 pydantic
+pydantic[email]
 fastapi
 python-multipart
 markdown
@@ -30,6 +31,8 @@ unstructured
 json_repair
 json5
 loguru
+PyJWT
+passlib
 
 # uncomment for testing
 # pytest
