@@ -1,7 +1,5 @@
-import json
 import os
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import jwt
 
@@ -14,7 +12,6 @@ from fastapi import (
     UploadFile,
     Header,
     HTTPException,
-    status,
     Depends,
     Response,
     Cookie
@@ -23,21 +20,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.responses import JSONResponse
 
 # Import models from models.py
 from .models import (
-    ResearchRequest,
-    ConfigRequest,
     User,
-    UserInDB,
     UserCreate,
     Token
 )
 
-# Import authentication utility functions from auth.py
-from .auth import (authenticate_user, create_access_token, register_user, is_valid_password)
-from .mongodb_config import (verify_mongodb_connection, mongodb_settings)
+from .auth import (
+    authenticate_user, 
+    create_access_token, 
+    register_user
+)
+from .mongodb_config import (
+    verify_mongodb_connection,
+    mongodb_settings
+)
 
 from backend.server.websocket_manager import WebSocketManager
 from backend.server.server_utils import (
@@ -145,67 +144,40 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 # --- Authentication Routes ---
 
-@app.post("/register")
-async def register(user: dict):
-    """
-    User registration endpoint.
-    Expects a JSON payload with 'username', 'password', 'confirm_password', 'email', and 'organisation_name'.
-    """
-    # Validate that password and confirm_password match
-    if user.get("password") != user.get("confirm_password"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Passwords do not match"
-        )
-    
-    # Validate password strength
-    if not is_valid_password(user.get("password", "")):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 6 characters long and include an uppercase letter, a lowercase letter, a number, and a special character"
-        )
-
+@app.post("/register", response_model=User)
+async def register(user: UserCreate):
     try:
-        user_data = await register_user(
-            username=user["username"],
-            password=user["password"],
-            email=user["email"],
-            organisation_name=user["organisation_name"]
-        )
-        return JSONResponse(content=user_data, status_code=201)
+        return await register_user(user)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/login")
 async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
-    """
-    User login endpoint.
-    Validates user credentials (email and password) and returns a JWT in a secure HTTP-only cookie.
-    """
-    # Use email (form_data.username is actually the email field in this case)
     user = await authenticate_user(form_data.username, form_data.password)
+    
     if not user:
         raise HTTPException(
             status_code=401,
-            detail="Incorrect email or password",
+            detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"}
         )
-    
-    # Generate JWT token
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = await create_access_token(data={"sub": user["email"]}, expires_delta=access_token_expires)
+    access_token = await create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
     
-    # Set the session cookie
     response.set_cookie(
         key="session",
         value=access_token,
         httponly=True,
-        secure=True,  # Change to True in production
+        secure=True,
         samesite="Lax",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         domain=os.getenv("APP_DOMAIN")
     )
+
     return {"message": "Login successful"}
+
+
 
 
 @app.get("/me")

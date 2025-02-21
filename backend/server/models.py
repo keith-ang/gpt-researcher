@@ -37,6 +37,7 @@ class UserBase(BaseModel):
 # Model used when creating a new user (includes the raw password).
 class UserCreate(UserBase):
     password: str
+    confirm_password: str
 
 # Model stored in the "database" (password stored as a hash).
 class UserInDB(UserBase):
@@ -46,7 +47,3 @@ class UserInDB(UserBase):
 class User(UserBase):
     pass
 
-# Token model returned by the login endpoint.
-class Token(BaseModel):
-    access_token: str
-    token_type: str
