@@ -1,5 +1,4 @@
-"use client";
-
+"use client"
 import React, { useState } from "react";
 import Head from "next/head";
 
@@ -15,36 +14,34 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    setError(""); 
+    setError("");
 
     const formData = new URLSearchParams();
     formData.append("username", email);
     formData.append("password", password);
 
     try {
-        // TODO: Replace localhost:8000 with .env variable for production
-        const response = await fetch("http://localhost:8000/login", {
-          method: "POST",
-          credentials: "include", 
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: formData.toString(), 
-        });
-    
-        if (!response.ok) {
-          const errorData = await response.json();
-          setError(errorData.detail || "Login failed"); 
-          return;
-        }
-    
-        onLogin(); // parent function from App.tsx
-    
-      } catch (error) {
-        console.error("Error during login:", error);
-        setError("An error occurred. Please try again.");
+      const response = await fetch(`${process.env.NEXT_PUBLIC_GPTR_API_URL}/login`, {
+        method: "POST",
+        credentials: "include", 
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: formData.toString(), 
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        setError(errorData.detail || "Login failed"); 
+        return;
       }
 
+      onLogin(); 
+
+    } catch (error) {
+      console.error("Error during login:", error);
+      setError("An error occurred. Please try again.");
+    }
   };
 
   return (
@@ -53,7 +50,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         <title>Login</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </Head>
-      <div style={containerStyle}>
+      <div style={backgroundStyle}>
         <form onSubmit={handleSubmit} style={formStyle}>
           <h2 style={headingStyle}>Login</h2>
 
@@ -90,13 +87,13 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   );
 };
 
-// Styling remains unchanged
-const containerStyle: React.CSSProperties = {
+// Inline styles for the background
+const backgroundStyle: React.CSSProperties = {
+  background: "linear-gradient(180deg, #141a2d, #065e65)",
+  minHeight: "100vh",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  minHeight: "100vh",
-  backgroundColor: "#f5f5f5",
 };
 
 const formStyle: React.CSSProperties = {

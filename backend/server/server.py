@@ -87,7 +87,7 @@ manager = WebSocketManager()
 # Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=[os.getenv('REACT_APP_URL')],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -95,7 +95,7 @@ app.add_middleware(
 
 # Constants and Directories
 DOC_PATH = os.getenv("DOC_PATH", "./my-docs")
-SECRET_KEY = "placeholder_secret_key"  # Replace with your actual secret key
+SECRET_KEY = "PLACEHOLDER_SECRET_KEY"  # Replace with your actual secret key
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -152,35 +152,26 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 # --- Authentication Routes ---
 
-# Utility function to decode the JWT token from the cookie
-def get_current_user_from_cookie(cookie_token: str = Depends(oauth2_scheme)):
-    try:
-        payload = jwt.decode(cookie_token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token does not contain user information",
-            )
-        return {"username": username}
-    except PyJWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-        )
-
 @app.get("/me")
 async def me(session: str = Cookie(None)):
     if not session:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
     try:
         payload = jwt.decode(session, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
+
         if username is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token does not contain user information")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
         return {"username": username, "message": "User is logged in"}
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
+    
+    except jwt.ExpiredSignatureError:
+        print("Token expired")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
+    
+    except jwt.InvalidTokenError:
+        print("Invalid token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 @app.post("/register", response_model=User)
 async def register(user: UserCreate):
@@ -220,7 +211,7 @@ async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depen
         secure=True,  # CHANGE TO TRUE DURING PRODUCTION
         samesite="Lax",  
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        domain="localhost"
+        domain=os.getenv("APP_DOMAIN")
     )
 
     return {"message": "Login successful"}
@@ -233,6 +224,7 @@ def logout(response: Response):
         httponly=True,
         secure=True,
         samesite="Lax",
-        max_age=0  
+        max_age=0,
+        domain=os.getenv("APP_DOMAIN") 
     )
     return {"message": "Logout successful"}

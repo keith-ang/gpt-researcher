@@ -5,7 +5,7 @@ import jwt
 from passlib.context import CryptContext
 
 # Constants
-SECRET_KEY = "YOUR_SECRET_KEY"  # Replace with your actual secret key
+SECRET_KEY = "PLACEHOLDER_SECRET_KEY" # Replace with your actual secret key
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 

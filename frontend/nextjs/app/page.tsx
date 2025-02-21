@@ -12,10 +12,18 @@ export default function App() {
   useEffect(() => {
     async function checkAuth() {
       try {
-        const response = await fetch("http://localhost:8000/me", {
+        // Retrieve token from cookies or localStorage
+        const token = document.cookie
+          .split("; ")
+          .find((row) => row.startsWith("session="))
+          ?.split("=")[1];
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_GPTR_API_URL}/me`, {
           method: "GET",
           credentials: "include",
+          headers: token ? { Authorization: `Bearer ${decodeURIComponent(token)}` } : {},
         });
+
         setIsLoggedIn(response.ok);
       } catch (error) {
         setIsLoggedIn(false);
@@ -25,7 +33,7 @@ export default function App() {
   }, []);
 
   if (isLoggedIn === null) {
-    return <div>Loading...</div>;
+    return <></>;
   }
 
   return isLoggedIn ? (

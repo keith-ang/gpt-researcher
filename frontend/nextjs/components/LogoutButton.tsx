@@ -10,8 +10,7 @@ type LogoutButtonProps = {
 const LogoutButton: React.FC<LogoutButtonProps> = ({ onLogout }) => {
   const handleLogout = async () => {
     try {
-      // TODO: Replace localhost:8000 with .env variable for production
-      const response = await fetch("http://localhost:8000/logout", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_GPTR_API_URL}/logout`, {
         method: "POST",
         credentials: "include",
       });
