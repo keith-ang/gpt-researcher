@@ -33,6 +33,7 @@ json5
 loguru
 PyJWT
 passlib
+motor
 
 azure-storage-blob
 

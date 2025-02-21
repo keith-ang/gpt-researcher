@@ -4,7 +4,6 @@ from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
 import jwt
-from passlib.context import CryptContext
 
 from fastapi import (
     FastAPI,
@@ -24,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.responses import JSONResponse
 
 # Import models from models.py
 from .models import (
@@ -36,14 +36,8 @@ from .models import (
 )
 
 # Import authentication utility functions from auth.py
-from .auth import (
-    verify_password,
-    get_password_hash,
-    get_user_from_db,
-    authenticate_user,
-    create_access_token,
-    placeholder_users_db,  # This is used for user registration
-)
+from .auth import (authenticate_user, create_access_token, register_user, is_valid_password)
+from .mongodb_config import (verify_mongodb_connection, mongodb_settings)
 
 from backend.server.websocket_manager import WebSocketManager
 from backend.server.server_utils import (
@@ -95,18 +89,17 @@ app.add_middleware(
 
 # Constants and Directories
 DOC_PATH = os.getenv("DOC_PATH", "./my-docs")
-SECRET_KEY = "PLACEHOLDER_SECRET_KEY"  # Replace with your actual secret key
-ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Startup event
 
 
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     os.makedirs("outputs", exist_ok=True)
     app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
     os.makedirs(DOC_PATH, exist_ok=True)
+    await verify_mongodb_connection()
     
 
 # Routes
@@ -152,72 +145,92 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 # --- Authentication Routes ---
 
-@app.get("/me")
-async def me(session: str = Cookie(None)):
-    if not session:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+@app.post("/register")
+async def register(user: dict):
+    """
+    User registration endpoint.
+    Expects a JSON payload with 'username', 'password', 'confirm_password', 'email', and 'organisation_name'.
+    """
+    # Validate that password and confirm_password match
+    if user.get("password") != user.get("confirm_password"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords do not match"
+        )
+    
+    # Validate password strength
+    if not is_valid_password(user.get("password", "")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters long and include an uppercase letter, a lowercase letter, a number, and a special character"
+        )
 
     try:
-        payload = jwt.decode(session, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-
-        if username is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-        return {"username": username, "message": "User is logged in"}
-    
-    except jwt.ExpiredSignatureError:
-        print("Token expired")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
-    
-    except jwt.InvalidTokenError:
-        print("Invalid token")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
-@app.post("/register", response_model=User)
-async def register(user: UserCreate):
-    if user.username in placeholder_users_db:
-        raise HTTPException(status_code=400, detail="Username already registered")
-    
-    hashed_password = get_password_hash(user.password)
-    user_data = user.dict()
-    user_data.pop("password")
-    user_data.update({"hashed_password": hashed_password})
-    placeholder_users_db[user.username] = user_data
-    logger.info(f"Registered new user: {user.username}")
-    return User(**user_data)
+        user_data = await register_user(
+            username=user["username"],
+            password=user["password"],
+            email=user["email"],
+            organisation_name=user["organisation_name"]
+        )
+        return JSONResponse(content=user_data, status_code=201)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/login")
 async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
-    user = authenticate_user(form_data.username, form_data.password)
-    
+    """
+    User login endpoint.
+    Validates user credentials (email and password) and returns a JWT in a secure HTTP-only cookie.
+    """
+    # Use email (form_data.username is actually the email field in this case)
+    user = await authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            status_code=401,
+            detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"}
         )
-
+    
+    # Generate JWT token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user["username"]}, expires_delta=access_token_expires
-    )
-
-    logger.info(f"User logged in: {user['username']}")
-
+    access_token = await create_access_token(data={"sub": user["email"]}, expires_delta=access_token_expires)
+    
+    # Set the session cookie
     response.set_cookie(
         key="session",
         value=access_token,
-        httponly=True,  
-        secure=True,  # CHANGE TO TRUE DURING PRODUCTION
-        samesite="Lax",  
+        httponly=True,
+        secure=True,  # Change to True in production
+        samesite="Lax",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         domain=os.getenv("APP_DOMAIN")
     )
-
     return {"message": "Login successful"}
+
+
+@app.get("/me")
+async def me(session: str = Cookie(None)):
+    """
+    Endpoint to retrieve information about the currently authenticated user.
+    """
+    if not session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(session, mongodb_settings.SECRET_KEY, algorithms=["HS256"])
+        username = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return {"username": username, "message": "User is logged in"}
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 @app.post("/logout")
 def logout(response: Response):
+    """
+    Logout endpoint that clears the session cookie.
+    """
     response.set_cookie(
         key="session",
         value="",
@@ -225,6 +238,6 @@ def logout(response: Response):
         secure=True,
         samesite="Lax",
         max_age=0,
-        domain=os.getenv("APP_DOMAIN") 
+        domain=os.getenv("APP_DOMAIN")
     )
     return {"message": "Logout successful"}

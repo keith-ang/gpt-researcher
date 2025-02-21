@@ -1,55 +1,74 @@
-from datetime import datetime, timedelta
-from typing import Optional, Dict
-
 import jwt
+import re
+from datetime import datetime, timedelta
+from typing import Optional
 from passlib.context import CryptContext
 
-# Constants
-SECRET_KEY = "PLACEHOLDER_SECRET_KEY" # Replace with your actual secret key
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+from .mongodb_config import (db, mongodb_settings)
 
-# Password hashing context
+# Password hashing context using bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# In-memory "database" for demonstration purposes.
-placeholder_users_db: Dict[str, dict] = {
-    "test@example.com": {
-        "username": "test",
-        "email": "test@example.com",
-        "organisation_name": "Quest Edtech",
-        "hashed_password": "$2b$12$rkpI5YmWuZMeufeMPziiU.Jdg.qpWGE1t.qk1XDdDnLyqwsFPvBMW"   # bcrypt hash of "password123"
-    }
-}
-
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify that the provided password matches the stored hash."""
     return pwd_context.verify(plain_password, hashed_password)
 
-# Debug check
 def get_password_hash(password: str) -> str:
+    """Hash a plain-text password."""
     return pwd_context.hash(password)
 
-def get_user_from_db(username: str) -> Optional[dict]:
-    """
-    Retrieve a user record from the in-memory database.
-    """
-    return placeholder_users_db.get(username)
+def is_valid_password(password: str) -> bool:
+    return (
+        re.search(r"[A-Z]", password) is not None and
+        re.search(r"[a-z]", password) is not None and
+        re.search(r"[0-9]", password) is not None and
+        re.search(r"[@$!%*?&#]", password) is not None and
+        len(password) >= 6
+    )
 
-def authenticate_user(username: str, password: str) -> Optional[dict]:
+async def authenticate_user(email: str, password: str) -> Optional[dict]:
     """
-    Authenticate the user by checking the username and password.
+    Authenticate the user by checking the email and password.
     """
-    user = get_user_from_db(username)
-    print(user)
+    user = await db['users'].find_one({"email": email})  
     if not user or not verify_password(password, user["hashed_password"]):
         return None
     return user
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+async def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
-    Create a JWT token with an expiration time.
+    Create a JWT token containing the user information and expiration.
     """
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta if expires_delta else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.utcnow() + (expires_delta if expires_delta else timedelta(minutes=30))
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(to_encode, mongodb_settings.SECRET_KEY, algorithm="HS256")
+
+async def register_user(username: str, password: str, email: str, organisation_name: str) -> dict:
+    """
+    Register a new user in MongoDB.
+    
+    - Checks if the username already exists.
+    - Hashes the password before storing.
+    - Returns the newly created user data.
+    """
+    # Check if user already exists
+    existing_user = await db['users'].find_one({"email": email})
+    if existing_user:
+        raise ValueError("Email already registered")
+    
+    # Hash the password
+    hashed_password = get_password_hash(password)
+    
+    # Create user record
+    user_data = {
+        "username": username,
+        "email": email,
+        "organisation_name": organisation_name,
+        "hashed_password": hashed_password,
+    }
+    
+    # Insert the new user into the database
+    result = await db['users'].insert_one(user_data)
+    user_data["_id"] = str(result.inserted_id)  # Convert ObjectId to string for serialization
+    return user_data
