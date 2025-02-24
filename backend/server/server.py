@@ -25,7 +25,6 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from .models import (
     User,
     UserCreate,
-    Token
 )
 
 from .auth import (
