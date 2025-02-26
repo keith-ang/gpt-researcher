@@ -26,21 +26,34 @@ export const useWebSocket = (
       setSocket(newSocket);
 
       newSocket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'human_feedback' && data.content === 'request') {
-          setQuestionForHuman(data.output);
-          setShowHumanFeedback(true);
-        } else {
-          const contentAndType = `${data.content}-${data.type}`;
-          setOrderedData((prevOrder) => [...prevOrder, { ...data, contentAndType }]);
-
-          if (data.type === 'report') {
-            setAnswer((prev: string) => prev + data.output);
-          } else if (data.type === 'path' || data.type === 'chat') {
-            setLoading(false);
+        try {
+          // Handle raw "ping" messages separately
+          if (event.data === "ping") {
+            newSocket.send(JSON.stringify({ type: "pong" }));
+            return;
           }
+      
+          // Parse JSON message
+          const data = JSON.parse(event.data);
+      
+          if (data.type === "human_feedback" && data.content === "request") {
+            setQuestionForHuman(data.output);
+            setShowHumanFeedback(true);
+          } else {
+            const contentAndType = `${data.content}-${data.type}`;
+            setOrderedData((prevOrder) => [...prevOrder, { ...data, contentAndType }]);
+      
+            if (data.type === "report") {
+              setAnswer((prev: string) => prev + data.output);
+            } else if (data.type === "path" || data.type === "chat") {
+              setLoading(false);
+            }
+          }
+        } catch (error) {
+          console.error("Error parsing WebSocket message:", error);
         }
       };
+      
 
       newSocket.onopen = () => {
         const { report_type, report_source, tone, query_domains } = chatBoxSettings;
