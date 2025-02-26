@@ -37,6 +37,7 @@ passlib
 motor
 
 azure-storage-blob
+langgraph
 
 # uncomment for testing
 # pytest
