@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState } from 'react';
 import { Data, ChatBoxSettings, QuestionData } from '../types/data';
 import { getHost } from '../helpers/getHost';
 
@@ -12,29 +12,6 @@ export const useWebSocket = (
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const heartbeatInterval = useRef<number>();
 
-  // Cleanup function for heartbeat
-  useEffect(() => {
-    return () => {
-      if (heartbeatInterval.current) {
-        clearInterval(heartbeatInterval.current);
-      }
-    };
-  }, []);
-
-  const startHeartbeat = (ws: WebSocket) => {
-    // Clear any existing heartbeat
-    if (heartbeatInterval.current) {
-      clearInterval(heartbeatInterval.current);
-    }
-    
-    // Start new heartbeat
-    heartbeatInterval.current = window.setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send('ping');
-      }
-    }, 30000); // Send ping every 30 seconds
-  };
-
   const initializeWebSocket = (promptValue: string, chatBoxSettings: ChatBoxSettings) => {
     const storedConfig = localStorage.getItem('apiVariables');
     const apiVariables = storedConfig ? JSON.parse(storedConfig) : {};
@@ -42,53 +19,28 @@ export const useWebSocket = (
     if (!socket && typeof window !== 'undefined') {
       const fullHost = getHost();
       const host = fullHost.replace('http://', '').replace('https://', '');
+      
       const ws_uri = `${fullHost.includes('https') ? 'wss:' : 'ws:'}//${host}/ws`;
 
       const newSocket = new WebSocket(ws_uri);
       setSocket(newSocket);
 
-      newSocket.onopen = () => {
-        const { report_type, report_source, tone, query_domains } = chatBoxSettings;
-        let data = "start " + JSON.stringify({ 
-          task: promptValue,
-          report_type, 
-          report_source, 
-          tone,
-          query_domains
-        });
-        newSocket.send(data);
-        startHeartbeat(newSocket);
-      };
-
       newSocket.onmessage = (event) => {
-        try {
-          // Handle raw "ping" messages separately
-          if (event.data === "ping") {
-            newSocket.send(JSON.stringify({ type: "pong" }));
-            return;
+        const data = JSON.parse(event.data);
+        if (data.type === 'human_feedback' && data.content === 'request') {
+          setQuestionForHuman(data.output);
+          setShowHumanFeedback(true);
+        } else {
+          const contentAndType = `${data.content}-${data.type}`;
+          setOrderedData((prevOrder) => [...prevOrder, { ...data, contentAndType }]);
+
+          if (data.type === 'report') {
+            setAnswer((prev: string) => prev + data.output);
+          } else if (data.type === 'path' || data.type === 'chat') {
+            setLoading(false);
           }
-      
-          // Parse JSON message
-          const data = JSON.parse(event.data);
-      
-          if (data.type === "human_feedback" && data.content === "request") {
-            setQuestionForHuman(data.output);
-            setShowHumanFeedback(true);
-          } else {
-            const contentAndType = `${data.content}-${data.type}`;
-            setOrderedData((prevOrder) => [...prevOrder, { ...data, contentAndType }]);
-      
-            if (data.type === "report") {
-              setAnswer((prev: string) => prev + data.output);
-            } else if (data.type === "path" || data.type === "chat") {
-              setLoading(false);
-            }
-          }
-        } catch (error) {
-          console.error("Error parsing WebSocket message:", error);
         }
       };
-      
 
       newSocket.onopen = () => {
         const { report_type, report_source, tone, query_domains } = chatBoxSettings;
@@ -114,13 +66,15 @@ export const useWebSocket = (
         }
         setSocket(null);
       };
-
-      newSocket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        if (heartbeatInterval.current) {
-          clearInterval(heartbeatInterval.current);
-        }
-      };
+    } else if (socket) {
+      const { report_type, report_source, tone } = chatBoxSettings;
+      let data = "start " + JSON.stringify({ 
+        task: promptValue, 
+        report_type, 
+        report_source, 
+        tone 
+      });
+      socket.send(data);
     }
   };
 
