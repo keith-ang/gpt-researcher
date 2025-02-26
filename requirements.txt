@@ -38,6 +38,7 @@ motor
 
 azure-storage-blob
 langgraph
+zendriver
 
 # uncomment for testing
 # pytest
