@@ -21,6 +21,8 @@ _SUPPORTED_PROVIDERS = {
     "xai",
     "deepseek",
     "litellm",
+    #add deployment name
+    "gpt-4o",
 }
 
 
@@ -36,7 +38,9 @@ class GenericLLMProvider:
             from langchain_openai import ChatOpenAI
 
             llm = ChatOpenAI(**kwargs)
+
         elif provider == "anthropic":
+        #if provider == "anthropic":
             _check_pkg("langchain_anthropic")
             from langchain_anthropic import ChatAnthropic
 
@@ -72,7 +76,6 @@ class GenericLLMProvider:
             llm = ChatFireworks(**kwargs)
         elif provider == "ollama":
             _check_pkg("langchain_community")
-            _check_pkg("langchain_ollama")
             from langchain_ollama import ChatOllama
             
             llm = ChatOllama(base_url=os.environ["OLLAMA_BASE_URL"], **kwargs)
@@ -130,12 +133,24 @@ class GenericLLMProvider:
             from langchain_community.chat_models.litellm import ChatLiteLLM
 
             llm = ChatLiteLLM(**kwargs)
-        elif provider == "gigachat":
-            _check_pkg("langchain_gigachat")
-            from langchain_gigachat.chat_models import GigaChat
+        
+        #add for new deployment
+        elif provider == "gpt-4o": # REPLACE deployment_name with your deployment name
+            #deployment_name = provider
+            _check_pkg("langchain_openai")
+            from langchain_openai import AzureChatOpenAI
+            # kwargs = {"azure_deployment": deployment_name, "openai_api_version": os.getenv("AZURE_OPENAI_API_VERSION"),**kwargs}
+            # llm = AzureChatOpenAI( **kwargs)
+            #kwargs = {"azure_deployment": provider, **kwargs}
+            #llm = AzureChatOpenAI(**kwargs)
 
-            kwargs.pop("model", None) # Use env GIGACHAT_MODEL=GigaChat-Max
-            llm = GigaChat(**kwargs)
+            llm = AzureChatOpenAI(
+                model=provider,
+                azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+                openai_api_key=os.environ["AZURE_OPENAI_API_KEY"],
+                openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
+            )
+
         else:
             supported = ", ".join(_SUPPORTED_PROVIDERS)
             raise ValueError(
