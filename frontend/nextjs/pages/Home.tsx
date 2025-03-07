@@ -24,7 +24,7 @@ export default function Home() {
     report_source: 'web', 
     report_type: 'research_report', 
     tone: 'Objective',
-    query_domains: [],
+    domains: [],
     defaultReportType: 'research_report'
   });
   const [question, setQuestion] = useState("");
@@ -165,7 +165,7 @@ export default function Home() {
    */
   useEffect(() => {
     const groupedData = preprocessOrderedData(orderedData);
-    const statusReports = ["agent_generated", "starting_research", "planning_research"];
+    const statusReports = ["agent_generated", "starting_research", "planning_research", "error"];
     
     const newLogs = groupedData.reduce((acc: any[], data) => {
       // Process accordion blocks (grouped data)
